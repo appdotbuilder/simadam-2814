@@ -1,17 +1,31 @@
+import { db } from '../db';
+import { studentsTable, classesTable } from '../db/schema';
 import { type CreateStudentInput, type UpdateStudentInput, type Student } from '../schema';
+import { eq } from 'drizzle-orm';
 
 export async function createStudent(input: CreateStudentInput): Promise<Student> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to create a new student record.
-    // Should validate unique NIS and handle class assignment if provided.
-    return Promise.resolve({
-        id: 1,
+  try {
+    // Validate class_id exists if provided
+    if (input.class_id) {
+      const classExists = await db.select()
+        .from(classesTable)
+        .where(eq(classesTable.id, input.class_id))
+        .execute();
+      
+      if (classExists.length === 0) {
+        throw new Error(`Class with ID ${input.class_id} does not exist`);
+      }
+    }
+
+    // Insert student record
+    const result = await db.insert(studentsTable)
+      .values({
         nis: input.nis,
         nisn: input.nisn,
         full_name: input.full_name,
         gender: input.gender,
         birth_place: input.birth_place,
-        birth_date: input.birth_date,
+        birth_date: input.birth_date.toISOString().split('T')[0], // Convert Date to YYYY-MM-DD string
         address: input.address,
         phone: input.phone,
         parent_name: input.parent_name,
@@ -19,10 +33,21 @@ export async function createStudent(input: CreateStudentInput): Promise<Student>
         origin_school: input.origin_school,
         entry_year: input.entry_year,
         class_id: input.class_id,
-        is_active: input.is_active,
-        created_at: new Date(),
-        updated_at: new Date()
-    });
+        is_active: input.is_active
+      })
+      .returning()
+      .execute();
+
+    // Convert birth_date back to Date object for return
+    const student = result[0];
+    return {
+      ...student,
+      birth_date: new Date(student.birth_date)
+    };
+  } catch (error) {
+    console.error('Student creation failed:', error);
+    throw error;
+  }
 }
 
 export async function getStudents(): Promise<Student[]> {

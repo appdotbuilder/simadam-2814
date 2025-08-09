@@ -1,11 +1,22 @@
+import { db } from '../db';
+import { certificatePickupsTable, studentsTable } from '../db/schema';
 import { type CreateCertificatePickupInput, type UpdateCertificatePickupInput, type CertificatePickup } from '../schema';
+import { eq, and } from 'drizzle-orm';
 
 export async function createCertificatePickup(input: CreateCertificatePickupInput): Promise<CertificatePickup> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to create a new certificate pickup record.
-    // Should validate student existence and certificate type availability.
-    return Promise.resolve({
-        id: 1,
+  try {
+    // Verify student exists
+    const student = await db.select()
+      .from(studentsTable)
+      .where(eq(studentsTable.id, input.student_id))
+      .execute();
+
+    if (student.length === 0) {
+      throw new Error(`Student with ID ${input.student_id} not found`);
+    }
+
+    const result = await db.insert(certificatePickupsTable)
+      .values({
         student_id: input.student_id,
         certificate_type: input.certificate_type,
         pickup_date: input.pickup_date,
@@ -13,60 +24,130 @@ export async function createCertificatePickup(input: CreateCertificatePickupInpu
         relationship: input.relationship,
         id_card_number: input.id_card_number,
         notes: input.notes,
-        is_picked_up: input.is_picked_up,
-        created_at: new Date(),
-        updated_at: new Date()
-    });
+        is_picked_up: input.is_picked_up
+      })
+      .returning()
+      .execute();
+
+    return result[0];
+  } catch (error) {
+    console.error('Certificate pickup creation failed:', error);
+    throw error;
+  }
 }
 
 export async function getCertificatePickups(): Promise<CertificatePickup[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to fetch all certificate pickup records.
-    // Should include related student information for comprehensive view.
-    return Promise.resolve([]);
+  try {
+    const result = await db.select()
+      .from(certificatePickupsTable)
+      .execute();
+
+    return result;
+  } catch (error) {
+    console.error('Fetching certificate pickups failed:', error);
+    throw error;
+  }
 }
 
 export async function getCertificatePickupById(id: number): Promise<CertificatePickup | null> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to fetch a specific certificate pickup by ID.
-    // Should include related student information.
-    return Promise.resolve(null);
+  try {
+    const result = await db.select()
+      .from(certificatePickupsTable)
+      .where(eq(certificatePickupsTable.id, id))
+      .execute();
+
+    return result[0] || null;
+  } catch (error) {
+    console.error('Fetching certificate pickup by ID failed:', error);
+    throw error;
+  }
 }
 
 export async function updateCertificatePickup(input: UpdateCertificatePickupInput): Promise<CertificatePickup> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to update existing certificate pickup data.
-    // Should handle pickup status changes and validation of pickup details.
-    return Promise.resolve({
-        id: input.id,
-        student_id: 1,
-        certificate_type: 'Ijazah',
-        pickup_date: new Date(),
-        picked_by: 'Parent Name',
-        relationship: 'Orang Tua',
-        id_card_number: '3201234567890123',
-        notes: 'Updated notes',
-        is_picked_up: true,
-        created_at: new Date(),
-        updated_at: new Date()
-    });
+  try {
+    // Build update object with only provided fields
+    const updateData: any = { updated_at: new Date() };
+    
+    if (input.student_id !== undefined) {
+      // Verify student exists if student_id is being updated
+      const student = await db.select()
+        .from(studentsTable)
+        .where(eq(studentsTable.id, input.student_id))
+        .execute();
+
+      if (student.length === 0) {
+        throw new Error(`Student with ID ${input.student_id} not found`);
+      }
+      updateData.student_id = input.student_id;
+    }
+    
+    if (input.certificate_type !== undefined) updateData.certificate_type = input.certificate_type;
+    if (input.pickup_date !== undefined) updateData.pickup_date = input.pickup_date;
+    if (input.picked_by !== undefined) updateData.picked_by = input.picked_by;
+    if (input.relationship !== undefined) updateData.relationship = input.relationship;
+    if (input.id_card_number !== undefined) updateData.id_card_number = input.id_card_number;
+    if (input.notes !== undefined) updateData.notes = input.notes;
+    if (input.is_picked_up !== undefined) updateData.is_picked_up = input.is_picked_up;
+
+    const result = await db.update(certificatePickupsTable)
+      .set(updateData)
+      .where(eq(certificatePickupsTable.id, input.id))
+      .returning()
+      .execute();
+
+    if (result.length === 0) {
+      throw new Error(`Certificate pickup with ID ${input.id} not found`);
+    }
+
+    return result[0];
+  } catch (error) {
+    console.error('Certificate pickup update failed:', error);
+    throw error;
+  }
 }
 
 export async function deleteCertificatePickup(id: number): Promise<{ success: boolean }> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to delete a certificate pickup record.
-    // Should validate business rules before allowing deletion.
-    return Promise.resolve({ success: true });
+  try {
+    const result = await db.delete(certificatePickupsTable)
+      .where(eq(certificatePickupsTable.id, id))
+      .returning()
+      .execute();
+
+    if (result.length === 0) {
+      throw new Error(`Certificate pickup with ID ${id} not found`);
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Certificate pickup deletion failed:', error);
+    throw error;
+  }
 }
 
 export async function getCertificatePickupsByStudent(studentId: number): Promise<CertificatePickup[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to fetch certificate pickups for a specific student.
-    return Promise.resolve([]);
+  try {
+    const result = await db.select()
+      .from(certificatePickupsTable)
+      .where(eq(certificatePickupsTable.student_id, studentId))
+      .execute();
+
+    return result;
+  } catch (error) {
+    console.error('Fetching certificate pickups by student failed:', error);
+    throw error;
+  }
 }
 
 export async function getCertificatePickupsByStatus(isPickedUp: boolean): Promise<CertificatePickup[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to fetch certificate pickups by pickup status.
-    return Promise.resolve([]);
+  try {
+    const result = await db.select()
+      .from(certificatePickupsTable)
+      .where(eq(certificatePickupsTable.is_picked_up, isPickedUp))
+      .execute();
+
+    return result;
+  } catch (error) {
+    console.error('Fetching certificate pickups by status failed:', error);
+    throw error;
+  }
 }

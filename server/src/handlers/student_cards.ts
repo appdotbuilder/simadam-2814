@@ -1,74 +1,251 @@
+import { db } from '../db';
+import { studentCardsTable, studentsTable } from '../db/schema';
 import { type CreateStudentCardInput, type UpdateStudentCardInput, type StudentCard } from '../schema';
+import { eq, and, gte, lte } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 
 export async function createStudentCard(input: CreateStudentCardInput): Promise<StudentCard> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to create a new student card record (kartu pelajar).
-    // Should validate student existence and card number uniqueness.
-    return Promise.resolve({
-        id: 1,
+  try {
+    // Verify student exists
+    const student = await db.select()
+      .from(studentsTable)
+      .where(eq(studentsTable.id, input.student_id))
+      .execute();
+
+    if (student.length === 0) {
+      throw new Error(`Student with ID ${input.student_id} not found`);
+    }
+
+    // Check if card number already exists
+    const existingCard = await db.select()
+      .from(studentCardsTable)
+      .where(eq(studentCardsTable.card_number, input.card_number))
+      .execute();
+
+    if (existingCard.length > 0) {
+      throw new Error(`Card number ${input.card_number} already exists`);
+    }
+
+    // Create student card
+    const result = await db.insert(studentCardsTable)
+      .values({
         student_id: input.student_id,
         card_number: input.card_number,
-        issue_date: input.issue_date,
-        expiry_date: input.expiry_date,
+        issue_date: input.issue_date.toISOString().split('T')[0], // Convert Date to YYYY-MM-DD string
+        expiry_date: input.expiry_date.toISOString().split('T')[0], // Convert Date to YYYY-MM-DD string
         is_active: input.is_active,
-        notes: input.notes,
-        created_at: new Date(),
-        updated_at: new Date()
-    });
+        notes: input.notes
+      })
+      .returning()
+      .execute();
+
+    // Convert date strings back to Date objects
+    const card = result[0];
+    return {
+      ...card,
+      issue_date: new Date(card.issue_date),
+      expiry_date: new Date(card.expiry_date)
+    };
+  } catch (error) {
+    console.error('Student card creation failed:', error);
+    throw error;
+  }
 }
 
 export async function getStudentCards(): Promise<StudentCard[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to fetch all student card records.
-    // Should include related student information for management purposes.
-    return Promise.resolve([]);
+  try {
+    const result = await db.select()
+      .from(studentCardsTable)
+      .execute();
+
+    // Convert date strings back to Date objects
+    return result.map(card => ({
+      ...card,
+      issue_date: new Date(card.issue_date),
+      expiry_date: new Date(card.expiry_date)
+    }));
+  } catch (error) {
+    console.error('Failed to fetch student cards:', error);
+    throw error;
+  }
 }
 
 export async function getStudentCardById(id: number): Promise<StudentCard | null> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to fetch a specific student card by ID.
-    // Should include related student information.
-    return Promise.resolve(null);
+  try {
+    const result = await db.select()
+      .from(studentCardsTable)
+      .where(eq(studentCardsTable.id, id))
+      .execute();
+
+    if (result.length === 0) return null;
+
+    // Convert date strings back to Date objects
+    const card = result[0];
+    return {
+      ...card,
+      issue_date: new Date(card.issue_date),
+      expiry_date: new Date(card.expiry_date)
+    };
+  } catch (error) {
+    console.error('Failed to fetch student card by ID:', error);
+    throw error;
+  }
 }
 
 export async function updateStudentCard(input: UpdateStudentCardInput): Promise<StudentCard> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to update existing student card data.
-    // Should handle card renewal and expiry date extensions.
-    return Promise.resolve({
-        id: input.id,
-        student_id: 1,
-        card_number: 'CARD001',
-        issue_date: new Date(),
-        expiry_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year from now
-        is_active: true,
-        notes: 'Updated card',
-        created_at: new Date(),
-        updated_at: new Date()
-    });
+  try {
+    // Check if student card exists
+    const existing = await db.select()
+      .from(studentCardsTable)
+      .where(eq(studentCardsTable.id, input.id))
+      .execute();
+
+    if (existing.length === 0) {
+      throw new Error(`Student card with ID ${input.id} not found`);
+    }
+
+    // If updating student_id, verify student exists
+    if (input.student_id !== undefined) {
+      const student = await db.select()
+        .from(studentsTable)
+        .where(eq(studentsTable.id, input.student_id))
+        .execute();
+
+      if (student.length === 0) {
+        throw new Error(`Student with ID ${input.student_id} not found`);
+      }
+    }
+
+    // If updating card_number, check uniqueness
+    if (input.card_number !== undefined && input.card_number !== existing[0].card_number) {
+      const duplicateCard = await db.select()
+        .from(studentCardsTable)
+        .where(eq(studentCardsTable.card_number, input.card_number))
+        .execute();
+
+      if (duplicateCard.length > 0) {
+        throw new Error(`Card number ${input.card_number} already exists`);
+      }
+    }
+
+    // Build update values
+    const updateValues: any = {};
+    if (input.student_id !== undefined) updateValues.student_id = input.student_id;
+    if (input.card_number !== undefined) updateValues.card_number = input.card_number;
+    if (input.issue_date !== undefined) updateValues.issue_date = input.issue_date.toISOString().split('T')[0];
+    if (input.expiry_date !== undefined) updateValues.expiry_date = input.expiry_date.toISOString().split('T')[0];
+    if (input.is_active !== undefined) updateValues.is_active = input.is_active;
+    if (input.notes !== undefined) updateValues.notes = input.notes;
+
+    const result = await db.update(studentCardsTable)
+      .set(updateValues)
+      .where(eq(studentCardsTable.id, input.id))
+      .returning()
+      .execute();
+
+    // Convert date strings back to Date objects
+    const card = result[0];
+    return {
+      ...card,
+      issue_date: new Date(card.issue_date),
+      expiry_date: new Date(card.expiry_date)
+    };
+  } catch (error) {
+    console.error('Student card update failed:', error);
+    throw error;
+  }
 }
 
 export async function deleteStudentCard(id: number): Promise<{ success: boolean }> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to delete a student card record.
-    // Should validate business rules before allowing deletion.
-    return Promise.resolve({ success: true });
+  try {
+    // Check if student card exists
+    const existing = await db.select()
+      .from(studentCardsTable)
+      .where(eq(studentCardsTable.id, id))
+      .execute();
+
+    if (existing.length === 0) {
+      throw new Error(`Student card with ID ${id} not found`);
+    }
+
+    await db.delete(studentCardsTable)
+      .where(eq(studentCardsTable.id, id))
+      .execute();
+
+    return { success: true };
+  } catch (error) {
+    console.error('Student card deletion failed:', error);
+    throw error;
+  }
 }
 
 export async function getStudentCardsByStudent(studentId: number): Promise<StudentCard[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to fetch all cards for a specific student.
-    return Promise.resolve([]);
+  try {
+    const result = await db.select()
+      .from(studentCardsTable)
+      .where(eq(studentCardsTable.student_id, studentId))
+      .execute();
+
+    // Convert date strings back to Date objects
+    return result.map(card => ({
+      ...card,
+      issue_date: new Date(card.issue_date),
+      expiry_date: new Date(card.expiry_date)
+    }));
+  } catch (error) {
+    console.error('Failed to fetch student cards by student:', error);
+    throw error;
+  }
 }
 
 export async function getStudentCardsByStatus(isActive: boolean): Promise<StudentCard[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to fetch student cards by active status.
-    return Promise.resolve([]);
+  try {
+    const result = await db.select()
+      .from(studentCardsTable)
+      .where(eq(studentCardsTable.is_active, isActive))
+      .execute();
+
+    // Convert date strings back to Date objects
+    return result.map(card => ({
+      ...card,
+      issue_date: new Date(card.issue_date),
+      expiry_date: new Date(card.expiry_date)
+    }));
+  } catch (error) {
+    console.error('Failed to fetch student cards by status:', error);
+    throw error;
+  }
 }
 
 export async function getExpiringStudentCards(daysUntilExpiry: number): Promise<StudentCard[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to fetch cards that will expire within specified days.
-    return Promise.resolve([]);
+  try {
+    const today = new Date();
+    const targetDate = new Date(today);
+    targetDate.setDate(targetDate.getDate() + daysUntilExpiry);
+
+    // Convert dates to YYYY-MM-DD strings for database comparison
+    const todayStr = today.toISOString().split('T')[0];
+    const targetDateStr = targetDate.toISOString().split('T')[0];
+
+    const result = await db.select()
+      .from(studentCardsTable)
+      .where(
+        and(
+          gte(studentCardsTable.expiry_date, todayStr),
+          lte(studentCardsTable.expiry_date, targetDateStr),
+          eq(studentCardsTable.is_active, true)
+        )
+      )
+      .execute();
+
+    // Convert date strings back to Date objects
+    return result.map(card => ({
+      ...card,
+      issue_date: new Date(card.issue_date),
+      expiry_date: new Date(card.expiry_date)
+    }));
+  } catch (error) {
+    console.error('Failed to fetch expiring student cards:', error);
+    throw error;
+  }
 }

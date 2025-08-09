@@ -1,20 +1,56 @@
+import { db } from '../db';
+import { studentTransfersTable, studentsTable } from '../db/schema';
 import { type CreateStudentTransferInput, type UpdateStudentTransferInput, type StudentTransfer } from '../schema';
+import { eq } from 'drizzle-orm';
 
 export async function createStudentTransfer(input: CreateStudentTransferInput): Promise<StudentTransfer> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to create a new student transfer record (surat mutasi).
-    // Should validate student existence and handle student status update to inactive.
-    return Promise.resolve({
-        id: 1,
+  try {
+    // Verify student exists and is active
+    const student = await db.select()
+      .from(studentsTable)
+      .where(eq(studentsTable.id, input.student_id))
+      .execute();
+
+    if (student.length === 0) {
+      throw new Error(`Student with ID ${input.student_id} not found`);
+    }
+
+    if (!student[0].is_active) {
+      throw new Error(`Student with ID ${input.student_id} is already inactive`);
+    }
+
+    // Create student transfer record
+    const result = await db.insert(studentTransfersTable)
+      .values({
         student_id: input.student_id,
-        transfer_date: input.transfer_date,
+        transfer_date: input.transfer_date.toISOString().split('T')[0], // Convert Date to YYYY-MM-DD string
         destination_school: input.destination_school,
         transfer_reason: input.transfer_reason,
         letter_number: input.letter_number,
-        notes: input.notes,
-        created_at: new Date(),
-        updated_at: new Date()
-    });
+        notes: input.notes
+      })
+      .returning()
+      .execute();
+
+    // Update student status to inactive (transferred)
+    await db.update(studentsTable)
+      .set({ 
+        is_active: false
+        // updated_at will be updated automatically by database trigger or we skip manual update
+      })
+      .where(eq(studentsTable.id, input.student_id))
+      .execute();
+
+    // Convert date strings back to Date objects for return type
+    const transfer = result[0];
+    return {
+      ...transfer,
+      transfer_date: new Date(transfer.transfer_date)
+    };
+  } catch (error) {
+    console.error('Student transfer creation failed:', error);
+    throw error;
+  }
 }
 
 export async function getStudentTransfers(): Promise<StudentTransfer[]> {

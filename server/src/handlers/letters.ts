@@ -1,23 +1,53 @@
+import { db } from '../db';
+import { lettersTable } from '../db/schema';
 import { type CreateLetterInput, type UpdateLetterInput, type Letter } from '../schema';
+import { eq } from 'drizzle-orm';
 
 export async function createLetter(input: CreateLetterInput): Promise<Letter> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to create a new letter record (surat masuk/keluar).
-    // Should validate letter number uniqueness and handle file upload if provided.
-    return Promise.resolve({
-        id: 1,
+  try {
+    // Check if letter number already exists
+    const existingLetter = await db.select()
+      .from(lettersTable)
+      .where(eq(lettersTable.letter_number, input.letter_number))
+      .execute();
+
+    if (existingLetter.length > 0) {
+      throw new Error(`Letter number ${input.letter_number} already exists`);
+    }
+
+    // Convert Date objects to strings for date columns
+    const letterDateString = input.letter_date.toISOString().split('T')[0];
+    const receivedDateString = input.received_date 
+      ? input.received_date.toISOString().split('T')[0] 
+      : null;
+
+    // Insert new letter record
+    const result = await db.insert(lettersTable)
+      .values({
         letter_number: input.letter_number,
         letter_type: input.letter_type,
         subject: input.subject,
         sender: input.sender,
         recipient: input.recipient,
-        letter_date: input.letter_date,
-        received_date: input.received_date,
+        letter_date: letterDateString,
+        received_date: receivedDateString,
         description: input.description,
-        file_path: input.file_path,
-        created_at: new Date(),
-        updated_at: new Date()
-    });
+        file_path: input.file_path
+      })
+      .returning()
+      .execute();
+
+    // Convert date strings back to Date objects before returning
+    const letter = result[0];
+    return {
+      ...letter,
+      letter_date: new Date(letter.letter_date),
+      received_date: letter.received_date ? new Date(letter.received_date) : null
+    };
+  } catch (error) {
+    console.error('Letter creation failed:', error);
+    throw error;
+  }
 }
 
 export async function getLetters(): Promise<Letter[]> {
